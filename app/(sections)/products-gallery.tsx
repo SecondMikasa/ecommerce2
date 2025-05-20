@@ -20,12 +20,23 @@ export default function ProductGallery({
   isLoading,
   setIsLoading,
 }: ProductGalleryProps) {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [filteredProducts, setFilteredProducts] = useState<ProductProps[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+
+  // Debounce search query - wait 500ms after user stops typing before updating
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery)
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
 
   useEffect(() => {
     const fetchProducts = async () => {
-      setIsLoading(true);
+      setIsLoading(true)
       try {
         const response = await axios.get('/api/products')
         setProducts(response.data)
@@ -42,20 +53,68 @@ export default function ProductGallery({
     fetchProducts()
   }, [setProducts, setIsLoading])
 
+  // Use the debounced search query for filtering
   useEffect(() => {
-    if (searchQuery.trim() === "") {
+    if (!debouncedSearchQuery.trim()) {
       setFilteredProducts(products)
+      return
     }
-    else {
-      const query = searchQuery.toLowerCase()
-      const filtered = products.filter(
-        (product) =>
-          product.name.toLowerCase().includes(query) ||
-          product.description.toLowerCase().includes(query)
-      );
-      setFilteredProducts(filtered)
-    }
-  }, [searchQuery, products])
+
+    const fetchAIKeywords = async () => {
+      setIsSearching(true);
+      try {
+        const res = await fetch('/api/search', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            query: debouncedSearchQuery
+          })
+        })
+
+        const data = await res.json()
+        const aiKeywords = data.keywords
+
+        console.log("AI Keywords:", aiKeywords)
+
+        // If AI return no keywords, no results are shown
+        if (!Array.isArray(aiKeywords) || aiKeywords.length === 0) {
+          setFilteredProducts([])
+          return
+        }
+
+        const filtered = products.filter((product) => {
+          const lowerName = product.name.toLowerCase()
+          const lowerDesc = product.description.toLowerCase()
+          return aiKeywords.some((keyword: string) =>
+            lowerName.includes(keyword) || lowerDesc.includes(keyword)
+          )
+        })
+
+        setFilteredProducts(filtered)
+      }
+      catch (err) {
+        console.error("AI search failed:", err)
+
+        toast.error("AI search failed. Falling back to keyword search.")
+
+        // Fallback to basic search
+        const query = debouncedSearchQuery.toLowerCase();
+        const fallback = products.filter(
+          (p) =>
+            p.name.toLowerCase().includes(query) ||
+            p.description.toLowerCase().includes(query)
+        )
+        setFilteredProducts(fallback)
+      }
+      finally {
+        setIsSearching(false);
+      }
+    };
+
+    fetchAIKeywords()
+  }, [debouncedSearchQuery, products])
 
   return (
     <div className="space-y-6">
@@ -67,6 +126,11 @@ export default function ProductGallery({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
+        {
+          isSearching && (
+          <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+          )
+        }
       </div>
 
       {isLoading ? (

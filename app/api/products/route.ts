@@ -76,3 +76,37 @@ export async function POST(request: Request) {
         )
     }
 }
+
+// DELETE a product by ID
+export async function DELETE(request: Request) {
+    try {
+        const { productId } = await request.json();
+
+        if (!productId) {
+            return NextResponse.json(
+                { error: 'Product ID is required' },
+                { status: 400 }
+            );
+        }
+
+        const deletedProduct = await prisma.product.delete({
+            where: {
+                id: productId,
+            },
+        });
+
+        return NextResponse.json(
+            {
+                message: 'Product deleted successfully',
+                deletedProduct,
+            },
+            { status: 200 }
+        );
+    } catch (error) {
+        console.error('Error deleting product:', error);
+        return NextResponse.json(
+            { error: 'Failed to delete product' },
+            { status: 500 }
+        );
+    }
+}
